@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ResultImportStatus {
+  NOT_STARTED
+  SKIPPED_NOT_COMPLETED
+  IMPORTED
+  MISSING_RESULT_LINK
+  EVENT_ID_UNRESOLVED
+  RESULT_FETCH_FAILED
+  INVALID_RESULT_JSON
+  NO_ENTRIES
+}
+
+model Regatta {
+  id                 String @id
+
+  year               Int
+  level              String
+  regionName         String
+
+  name               String
+  dateFrom           DateTime
+  dateTo             DateTime
+  location           String?
+
+  canceled           Int
+  boats              Int
+
+  clubNameFull       String?
+  clubNameShort      String?
+
+  runsTotal          Int?
+  runsScored         Int?
+  factor             Float?
+
+  resultLink         String?
+  vereinUrl          String?
+
+  eventId            String?
+  classId            String?
+
+  isCompleted        Boolean
+  resultImportStatus ResultImportStatus @default(NOT_STARTED)
+
+  sailorResults      RegattaSailorResult[]
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([year])
+  @@index([regionName])
+  @@index([isCompleted])
+  @@index([resultImportStatus])
+}
+
+model Sailor {
+  id                   String @id @default(cuid())
+
+  identityKey           String @unique
+  name                  String
+  normalizedName        String
+  sailNumber            String
+  sailNumberNormalized  String
+
+  clubName              String?
+  clubCode              String?
+
+  results               RegattaSailorResult[]
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([normalizedName])
+  @@index([sailNumberNormalized])
+}
+
+model RegattaSailorResult {
+  id             String @id @default(cuid())
+
+  regattaId      String
+  regatta        Regatta @relation(fields: [regattaId], references: [id], onDelete: Cascade)
+
+  sailorId       String
+  sailor         Sailor @relation(fields: [sailorId], references: [id])
+
+  rank           Int?
+  totalPoints    Float?
+  netPoints      Float?
+
+  clubName       String?
+  clubCode       String?
+
+  raceResults    RaceResult[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([regattaId, sailorId])
+  @@index([sailorId])
+  @@index([rank])
+  @@index([clubCode])
+}
+
+model RaceResult {
+  id                      String @id @default(cuid())
+
+  regattaSailorResultId    String
+  regattaSailorResult      RegattaSailorResult @relation(fields: [regattaSailorResultId], references: [id], onDelete: Cascade)
+
+  raceIndex                Int
+  rank                     Int?
+  points                   Float?
+  pointsDiscarded          Boolean @default(false)
+  raceStatusCode           String?
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([regattaSailorResultId, raceIndex])
+  @@index([raceStatusCode])
+}
