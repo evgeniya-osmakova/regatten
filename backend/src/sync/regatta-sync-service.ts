@@ -120,9 +120,10 @@ export class RegattaSyncService {
         region.name,
         fallbackYear,
       );
-      const { id, resultImportStatus, ...updateData } = regattaData;
+      const { id, eventId, resultImportStatus, ...updateData } = regattaData;
       const regattaUpdateData: Prisma.RegattaUncheckedUpdateInput = {
         ...updateData,
+        ...(eventId ? { eventId } : {}),
         ...(regattaData.isCompleted ? {} : { resultImportStatus }),
       };
 
@@ -301,12 +302,27 @@ export class RegattaSyncService {
       return "skipped";
     }
 
-    await this.saveManage2SailResults({
-      regattaId,
-      eventId,
-      classId: parsedLink.classId,
-      entries: result.EntryResults,
-    });
+    try {
+      await this.saveManage2SailResults({
+        regattaId,
+        eventId,
+        classId: parsedLink.classId,
+        entries: result.EntryResults,
+      });
+    } catch (error) {
+      await this.markRegattaStatus(regattaId, {
+        status: ResultImportStatus.INVALID_RESULT_JSON,
+        eventId,
+        classId: parsedLink.classId,
+      });
+      summary.errors.push({
+        source: "Manage2Sail result save",
+        regattaId,
+        status: ResultImportStatus.INVALID_RESULT_JSON,
+        message: errorMessage(error),
+      });
+      return "failed";
+    }
 
     return "imported";
   }
@@ -382,6 +398,12 @@ export class RegattaSyncService {
 
         syncedResultIds.push(sailorResult.id);
         await this.syncRaceResults(tx, sailorResult.id, entry);
+      }
+
+      if (syncedResultIds.length === 0) {
+        throw new Error(
+          `No valid Manage2Sail entries parsed for regatta ${params.regattaId}`,
+        );
       }
 
       await tx.regattaSailorResult.deleteMany({
