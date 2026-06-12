@@ -1,27 +1,32 @@
 export type DodvRegionCode = "b" | "bg";
 
+export type ApiScalar = string | number | boolean | null | undefined;
+export type ApiTextScalar = Exclude<ApiScalar, boolean>;
+export type ApiNumberScalar = Exclude<ApiScalar, boolean>;
+export type ApiBooleanScalar = ApiScalar;
+
 export interface DodvRegionConfig {
   code: DodvRegionCode;
   name: string;
 }
 
 export interface DodvRegattaItem {
-  id?: unknown;
-  year?: unknown;
-  level?: unknown;
-  name?: unknown;
-  date_from?: unknown;
-  date_to?: unknown;
-  location?: unknown;
-  canceled?: unknown;
-  boats?: unknown;
-  clubname?: unknown;
-  club?: unknown;
-  runs_total?: unknown;
-  runs_scored?: unknown;
-  factor?: unknown;
-  resultlink?: unknown;
-  url?: unknown;
+  id?: ApiTextScalar;
+  year?: ApiNumberScalar;
+  level?: ApiTextScalar;
+  name?: ApiTextScalar;
+  date_from?: ApiTextScalar;
+  date_to?: ApiTextScalar;
+  location?: ApiTextScalar;
+  canceled?: ApiNumberScalar;
+  boats?: ApiNumberScalar;
+  clubname?: ApiTextScalar;
+  club?: ApiTextScalar;
+  runs_total?: ApiNumberScalar;
+  runs_scored?: ApiNumberScalar;
+  factor?: ApiNumberScalar;
+  resultlink?: ApiTextScalar;
+  url?: ApiTextScalar;
 }
 
 export interface ParsedManage2SailLink {
@@ -30,30 +35,30 @@ export interface ParsedManage2SailLink {
 }
 
 export interface Manage2SailResult {
-  EntryResults?: Manage2SailEntryResult[];
+  EntryResults?: Manage2SailEntryResult[] | null;
 }
 
 export interface Manage2SailEntryResult {
-  Rank?: unknown;
-  Name?: unknown;
-  SailNumber?: unknown;
-  ClubName?: unknown;
-  ClubCode?: unknown;
-  TotalPoints?: unknown;
-  NetPoints?: unknown;
+  Rank?: ApiNumberScalar;
+  Name?: ApiTextScalar;
+  SailNumber?: ApiTextScalar;
+  ClubName?: ApiTextScalar;
+  ClubCode?: ApiTextScalar;
+  TotalPoints?: ApiNumberScalar;
+  NetPoints?: ApiNumberScalar;
   Skipper?: {
-    FirstName?: unknown;
-    LastName?: unknown;
-  };
-  EntryRaceResults?: Manage2SailEntryRaceResult[];
+    FirstName?: ApiTextScalar;
+    LastName?: ApiTextScalar;
+  } | null;
+  EntryRaceResults?: Manage2SailEntryRaceResult[] | null;
 }
 
 export interface Manage2SailEntryRaceResult {
-  OverallRaceIndex?: unknown;
-  Rank?: unknown;
-  Points?: unknown;
-  PointsDiscarded?: unknown;
-  RaceStatusCode?: unknown;
+  OverallRaceIndex?: ApiNumberScalar;
+  Rank?: ApiNumberScalar;
+  Points?: ApiNumberScalar;
+  PointsDiscarded?: ApiBooleanScalar;
+  RaceStatusCode?: ApiTextScalar;
 }
 
 export interface SailorIdentity {

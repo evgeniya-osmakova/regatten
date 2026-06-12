@@ -120,12 +120,16 @@ export class RegattaSyncService {
         region.name,
         fallbackYear,
       );
-      const { id, ...updateData } = regattaData;
+      const { id, resultImportStatus, ...updateData } = regattaData;
+      const regattaUpdateData: Prisma.RegattaUncheckedUpdateInput = {
+        ...updateData,
+        ...(regattaData.isCompleted ? {} : { resultImportStatus }),
+      };
 
       await this.prisma.regatta.upsert({
         where: { id },
         create: regattaData,
-        update: updateData,
+        update: regattaUpdateData,
       });
       summary.regattasUpserted += 1;
 

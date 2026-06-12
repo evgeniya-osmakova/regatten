@@ -85,7 +85,13 @@ export function isDateBeforeToday(date: Date, now = new Date()): boolean {
 }
 
 export function normalizeName(name: string): string {
-  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+  return name
+    .replace(/[ßẞ]/g, "ss")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 export function normalizeSailNumber(sailNumber: string): string {
@@ -115,14 +121,16 @@ export function buildSailorIdentity(params: {
   const sailNumber = params.sailNumber?.trim() ?? "";
   const normalizedName = normalizeName(params.name);
   const normalizedSailNumber = normalizeSailNumber(sailNumber);
-  const sailNumberNormalized =
-    normalizedSailNumber || `missing:${normalizeClubCode(params.clubCode) || "no-club"}`;
+  const normalizedClubCode = normalizeClubCode(params.clubCode);
+  const identitySuffix = normalizedSailNumber
+    ? `sail:${normalizedSailNumber}`
+    : `club:${normalizedClubCode || "no-club"}`;
 
   return {
-    identityKey: `${normalizedName}|${sailNumberNormalized}`,
+    identityKey: `${normalizedName}|${identitySuffix}`,
     normalizedName,
     sailNumber,
-    sailNumberNormalized,
+    sailNumberNormalized: normalizedSailNumber,
   };
 }
 
