@@ -35,6 +35,14 @@ export interface Manage2SailResult {
   EntryResults?: Manage2SailEntryResult[] | null;
 }
 
+export interface Manage2SailRegattaInfo {
+  Id?: ApiValue;
+  Name?: ApiValue;
+  InfoAlias?: ApiValue;
+  LinkIdOrAlias?: ApiValue;
+  HasResults?: ApiValue;
+}
+
 export interface Manage2SailEntryResult {
   Rank?: ApiValue;
   Name?: ApiValue;
@@ -82,5 +90,10 @@ export interface SyncError {
   source: string;
   regattaId?: string;
   status?: string;
+  resultLink?: string;
+  eventId?: string;
+  classId?: string;
+  resolvedClassId?: string;
+  httpStatus?: number;
   message: string;
 }

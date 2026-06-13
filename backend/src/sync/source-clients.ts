@@ -8,6 +8,7 @@ import { isUuid } from "./normalization.js";
 import type {
   DodvRegionCode,
   DodvRegattaItem,
+  Manage2SailRegattaInfo,
   Manage2SailResult,
 } from "./types.js";
 
@@ -67,6 +68,33 @@ export class Manage2SailClient {
     return extractEventId(html);
   }
 
+  async resolveResultClassId(params: {
+    eventSlugOrId: string;
+    eventId: string;
+    classId: string;
+  }): Promise<string | null> {
+    if (isUuid(params.classId)) {
+      return params.classId;
+    }
+
+    const pageId = isUuid(params.eventSlugOrId)
+      ? params.eventId
+      : params.eventSlugOrId;
+    const url = `${MANAGE2SAIL_EVENT_PAGE_BASE_URL}/${encodeURIComponent(
+      pageId,
+    )}`;
+    const html = await fetchText(url);
+    const regattas = extractBootstrappedRegattas(html);
+    const matchingRegatta = regattas.find((regatta) =>
+      hasResults(regatta) &&
+      [regatta.Id, regatta.InfoAlias, regatta.LinkIdOrAlias].some((value) =>
+        apiValueMatches(value, params.classId),
+      ),
+    );
+
+    return apiValueToString(matchingRegatta?.Id) ?? null;
+  }
+
   async fetchResult(params: {
     eventId: string;
     classId: string;
@@ -84,6 +112,27 @@ export class Manage2SailClient {
   }
 }
 
+export function extractBootstrappedRegattas(
+  html: string,
+): Manage2SailRegattaInfo[] {
+  const objectText = extractAssignedObject(
+    html,
+    "window.boostrapedResourceData",
+  );
+  if (!objectText) {
+    return [];
+  }
+
+  try {
+    const data = JSON.parse(objectText) as { Regatta?: unknown };
+    return Array.isArray(data.Regatta)
+      ? (data.Regatta as Manage2SailRegattaInfo[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function extractEventId(html: string): string | null {
   const directMatch =
     /window\.SailingInfo\.eventId\s*=\s*['"]([0-9a-f-]{36})['"]/i.exec(html);
@@ -96,6 +145,87 @@ function extractEventId(html: string): string | null {
       html,
     );
   return apiRootMatch?.[1] ?? null;
+}
+
+function extractAssignedObject(
+  html: string,
+  assignmentName: string,
+): string | null {
+  const assignmentIndex = html.indexOf(assignmentName);
+  if (assignmentIndex === -1) {
+    return null;
+  }
+
+  const objectStart = html.indexOf("{", assignmentIndex);
+  if (objectStart === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let stringQuote = "";
+  let escaped = false;
+
+  for (let index = objectStart; index < html.length; index += 1) {
+    const char = html[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === stringQuote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      stringQuote = char;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return html.slice(objectStart, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function hasResults(regatta: Manage2SailRegattaInfo): boolean {
+  if (typeof regatta.HasResults === "boolean") {
+    return regatta.HasResults;
+  }
+
+  if (typeof regatta.HasResults === "number") {
+    return regatta.HasResults !== 0;
+  }
+
+  if (typeof regatta.HasResults === "string") {
+    return ["true", "1", "yes"].includes(regatta.HasResults.toLowerCase());
+  }
+
+  return false;
+}
+
+function apiValueMatches(value: unknown, expected: string): boolean {
+  return apiValueToString(value)?.toLowerCase() === expected.toLowerCase();
+}
+
+function apiValueToString(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return null;
+  }
+
+  const text = String(value).trim();
+  return text.length > 0 ? text : null;
 }
 
 async function fetchJson(url: string): Promise<unknown> {

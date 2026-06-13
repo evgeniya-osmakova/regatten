@@ -256,11 +256,55 @@ export class RegattaSyncService {
       return "failed";
     }
 
+    let resolvedClassId: string | null;
+    try {
+      resolvedClassId = await this.manage2SailClient.resolveResultClassId({
+        eventSlugOrId: parsedLink.eventSlugOrId,
+        eventId,
+        classId: parsedLink.classId,
+      });
+    } catch (error) {
+      await this.markRegattaStatus(regattaId, {
+        status: ResultImportStatus.RESULT_FETCH_FAILED,
+        eventId,
+        classId: parsedLink.classId,
+      });
+      summary.errors.push({
+        source: "Manage2Sail class resolver",
+        regattaId,
+        status: ResultImportStatus.RESULT_FETCH_FAILED,
+        resultLink,
+        eventId,
+        classId: parsedLink.classId,
+        httpStatus: error instanceof HttpStatusError ? error.status : undefined,
+        message: `Failed to resolve Manage2Sail classId '${parsedLink.classId}': ${errorMessage(error)}`,
+      });
+      return "failed";
+    }
+
+    if (!resolvedClassId) {
+      await this.markRegattaStatus(regattaId, {
+        status: ResultImportStatus.RESULT_FETCH_FAILED,
+        eventId,
+        classId: parsedLink.classId,
+      });
+      summary.errors.push({
+        source: "Manage2Sail class resolver",
+        regattaId,
+        status: ResultImportStatus.RESULT_FETCH_FAILED,
+        resultLink,
+        eventId,
+        classId: parsedLink.classId,
+        message: `Could not resolve Manage2Sail classId '${parsedLink.classId}' from event page boostrapedResourceData.Regatta`,
+      });
+      return "failed";
+    }
+
     let result;
     try {
       result = await this.manage2SailClient.fetchResult({
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
       });
     } catch (error) {
       const status =
@@ -270,15 +314,27 @@ export class RegattaSyncService {
       await this.markRegattaStatus(regattaId, {
         status,
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
       });
       summary.errors.push({
         source: "Manage2Sail result",
         regattaId,
         status,
+        resultLink,
+        eventId,
+        classId: parsedLink.classId,
+        resolvedClassId,
+        httpStatus: error instanceof HttpStatusError ? error.status : undefined,
         message:
           error instanceof HttpStatusError
-            ? `${error.message} (${error.url})`
+            ? manage2SailResultFetchErrorMessage({
+                error,
+                regattaId,
+                resultLink,
+                eventId,
+                originalClassId: parsedLink.classId,
+                resolvedClassId,
+              })
             : errorMessage(error),
       });
       return "failed";
@@ -288,7 +344,7 @@ export class RegattaSyncService {
       await this.markRegattaStatus(regattaId, {
         status: ResultImportStatus.INVALID_RESULT_JSON,
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
       });
       return "failed";
     }
@@ -297,7 +353,7 @@ export class RegattaSyncService {
       await this.markRegattaStatus(regattaId, {
         status: ResultImportStatus.NO_ENTRIES,
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
       });
       return "skipped";
     }
@@ -306,19 +362,23 @@ export class RegattaSyncService {
       await this.saveManage2SailResults({
         regattaId,
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
         entries: result.EntryResults,
       });
     } catch (error) {
       await this.markRegattaStatus(regattaId, {
-        status: ResultImportStatus.INVALID_RESULT_JSON,
+        status: ResultImportStatus.RESULT_SAVE_FAILED,
         eventId,
-        classId: parsedLink.classId,
+        classId: resolvedClassId,
       });
       summary.errors.push({
         source: "Manage2Sail result save",
         regattaId,
-        status: ResultImportStatus.INVALID_RESULT_JSON,
+        status: ResultImportStatus.RESULT_SAVE_FAILED,
+        resultLink,
+        eventId,
+        classId: parsedLink.classId,
+        resolvedClassId,
         message: errorMessage(error),
       });
       return "failed";
@@ -512,4 +572,31 @@ function createEmptySummary(): SyncSummary {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function manage2SailResultFetchErrorMessage(params: {
+  error: HttpStatusError;
+  regattaId: string;
+  resultLink: string | undefined;
+  eventId: string;
+  originalClassId: string;
+  resolvedClassId: string;
+}): string {
+  const details = [
+    params.error.message,
+    `regattaId=${params.regattaId}`,
+    `resultLink=${params.resultLink ?? ""}`,
+    `eventId=${params.eventId}`,
+    `originalClassId=${params.originalClassId}`,
+    `resolvedClassId=${params.resolvedClassId}`,
+    `url=${params.error.url}`,
+  ];
+
+  if (params.error.status === 400) {
+    details.push(
+      "HTTP 400 from Manage2Sail after classId resolution; inspect originalClassId and resolvedClassId",
+    );
+  }
+
+  return details.join("; ");
 }
