@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
-    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev --name init",
     "db:sync": "tsx src/scripts/db-sync.ts",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "db:push": "prisma db push"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

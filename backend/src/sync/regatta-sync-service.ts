@@ -333,95 +333,101 @@ export class RegattaSyncService {
     classId: string;
     entries: Manage2SailEntryResult[];
   }): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const syncedResultIds: string[] = [];
+    await this.prisma.$transaction(
+      async (tx) => {
+        const syncedResultIds: string[] = [];
 
-      for (const entry of params.entries) {
-        const name = getSailorName(entry);
-        if (!name) {
-          continue;
-        }
+        for (const entry of params.entries) {
+          const name = getSailorName(entry);
+          if (!name) {
+            continue;
+          }
 
-        const clubName = optionalString(entry.ClubName);
-        const clubCode = optionalString(entry.ClubCode);
-        const identity = buildSailorIdentity({
-          name,
-          sailNumber: optionalString(entry.SailNumber),
-          clubCode,
-        });
-
-        const sailor = await tx.sailor.upsert({
-          where: { identityKey: identity.identityKey },
-          create: {
-            identityKey: identity.identityKey,
+          const clubName = optionalString(entry.ClubName);
+          const clubCode = optionalString(entry.ClubCode);
+          const identity = buildSailorIdentity({
             name,
-            normalizedName: identity.normalizedName,
-            sailNumber: identity.sailNumber,
-            sailNumberNormalized: identity.sailNumberNormalized,
-            clubName: clubName ?? null,
-            clubCode: clubCode ?? null,
-          },
-          update: {
-            name,
-            normalizedName: identity.normalizedName,
-            sailNumber: identity.sailNumber,
-            sailNumberNormalized: identity.sailNumberNormalized,
-            clubName: clubName ?? undefined,
-            clubCode: clubCode ?? undefined,
-          },
-        });
+            sailNumber: optionalString(entry.SailNumber),
+            clubCode,
+          });
 
-        const sailorResult = await tx.regattaSailorResult.upsert({
-          where: {
-            regattaId_sailorId: {
+          const sailor = await tx.sailor.upsert({
+            where: { identityKey: identity.identityKey },
+            create: {
+              identityKey: identity.identityKey,
+              name,
+              normalizedName: identity.normalizedName,
+              sailNumber: identity.sailNumber,
+              sailNumberNormalized: identity.sailNumberNormalized,
+              clubName: clubName ?? null,
+              clubCode: clubCode ?? null,
+            },
+            update: {
+              name,
+              normalizedName: identity.normalizedName,
+              sailNumber: identity.sailNumber,
+              sailNumberNormalized: identity.sailNumberNormalized,
+              clubName: clubName ?? undefined,
+              clubCode: clubCode ?? undefined,
+            },
+          });
+
+          const sailorResult = await tx.regattaSailorResult.upsert({
+            where: {
+              regattaId_sailorId: {
+                regattaId: params.regattaId,
+                sailorId: sailor.id,
+              },
+            },
+            create: {
               regattaId: params.regattaId,
               sailorId: sailor.id,
+              rank: intOrNull(entry.Rank),
+              totalPoints: numberOrNull(entry.TotalPoints),
+              netPoints: numberOrNull(entry.NetPoints),
+              clubName: clubName ?? null,
+              clubCode: clubCode ?? null,
             },
-          },
-          create: {
+            update: {
+              rank: intOrNull(entry.Rank),
+              totalPoints: numberOrNull(entry.TotalPoints),
+              netPoints: numberOrNull(entry.NetPoints),
+              clubName: clubName ?? null,
+              clubCode: clubCode ?? null,
+            },
+          });
+
+          syncedResultIds.push(sailorResult.id);
+          await this.syncRaceResults(tx, sailorResult.id, entry);
+        }
+
+        if (syncedResultIds.length === 0) {
+          throw new Error(
+            `No valid Manage2Sail entries parsed for regatta ${params.regattaId}`,
+          );
+        }
+
+        await tx.regattaSailorResult.deleteMany({
+          where: {
             regattaId: params.regattaId,
-            sailorId: sailor.id,
-            rank: intOrNull(entry.Rank),
-            totalPoints: numberOrNull(entry.TotalPoints),
-            netPoints: numberOrNull(entry.NetPoints),
-            clubName: clubName ?? null,
-            clubCode: clubCode ?? null,
-          },
-          update: {
-            rank: intOrNull(entry.Rank),
-            totalPoints: numberOrNull(entry.TotalPoints),
-            netPoints: numberOrNull(entry.NetPoints),
-            clubName: clubName ?? null,
-            clubCode: clubCode ?? null,
+            id: { notIn: syncedResultIds },
           },
         });
 
-        syncedResultIds.push(sailorResult.id);
-        await this.syncRaceResults(tx, sailorResult.id, entry);
-      }
-
-      if (syncedResultIds.length === 0) {
-        throw new Error(
-          `No valid Manage2Sail entries parsed for regatta ${params.regattaId}`,
-        );
-      }
-
-      await tx.regattaSailorResult.deleteMany({
-        where: {
-          regattaId: params.regattaId,
-          id: { notIn: syncedResultIds },
-        },
-      });
-
-      await tx.regatta.update({
-        where: { id: params.regattaId },
-        data: {
-          eventId: params.eventId,
-          classId: params.classId,
-          resultImportStatus: ResultImportStatus.IMPORTED,
-        },
-      });
-    });
+        await tx.regatta.update({
+          where: { id: params.regattaId },
+          data: {
+            eventId: params.eventId,
+            classId: params.classId,
+            resultImportStatus: ResultImportStatus.IMPORTED,
+          },
+        });
+      },
+      {
+        maxWait: 20_000,
+        timeout: 120_000,
+      },
+    );
   }
 
   private async syncRaceResults(
