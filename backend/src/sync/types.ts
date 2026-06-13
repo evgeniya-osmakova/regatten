@@ -67,7 +67,7 @@ export interface Manage2SailEntryRaceResult {
 }
 
 export interface SailorIdentity {
-  identityKey: string;
+  sailorId: string;
   normalizedName: string;
   sailNumber: string;
   sailNumberNormalized: string;
@@ -79,6 +79,7 @@ export interface SyncSummary {
   regattasUpserted: number;
   canceledRegattasDeleted: number;
   completedRegattas: number;
+  notCompletedRegattas: number;
   resultImportsAttempted: number;
   resultImportsSucceeded: number;
   resultImportsSkipped: number;

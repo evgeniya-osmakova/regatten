@@ -11,6 +11,7 @@ import {
   intOrNull,
   isDateBeforeToday,
   isUuid,
+  normalizeClubCode,
   numberOrNull,
   optionalString,
   parseDodvDate,
@@ -115,16 +116,22 @@ export class RegattaSyncService {
         return;
       }
 
+      const clubId = await this.upsertClub({
+        name: optionalString(item.clubname),
+        code: optionalString(item.club),
+        url: optionalString(item.url),
+      });
       const regattaData = this.buildRegattaUpsertData(
         item,
         region.name,
         fallbackYear,
+        clubId,
       );
-      const { id, eventId, resultImportStatus, ...updateData } = regattaData;
+      const { id, eventId, status, ...updateData } = regattaData;
       const regattaUpdateData: Prisma.RegattaUncheckedUpdateInput = {
         ...updateData,
         ...(eventId ? { eventId } : {}),
-        ...(regattaData.isCompleted ? {} : { resultImportStatus }),
+        ...(regattaData.isCompleted ? {} : { status }),
       };
 
       await this.prisma.regatta.upsert({
@@ -135,7 +142,7 @@ export class RegattaSyncService {
       summary.regattasUpserted += 1;
 
       if (!regattaData.isCompleted) {
-        summary.resultImportsSkipped += 1;
+        summary.notCompletedRegattas += 1;
         return;
       }
 
@@ -169,6 +176,7 @@ export class RegattaSyncService {
     item: DodvRegattaItem,
     regionName: string,
     fallbackYear: number,
+    clubId: string | null,
   ): RegattaUpsertData {
     const id = requiredString(item.id, "id");
     const dateFrom = parseDodvDate(item.date_from, "date_from");
@@ -194,20 +202,18 @@ export class RegattaSyncService {
       location: optionalString(item.location) ?? null,
       canceled,
       boats,
-      clubNameFull: optionalString(item.clubname) ?? null,
-      clubNameShort: optionalString(item.club) ?? null,
+      clubId,
       runsTotal: intOrNull(item.runs_total),
       runsScored: intOrNull(item.runs_scored),
       factor: numberOrNull(item.factor),
       resultLink: resultLink ?? null,
-      vereinUrl: optionalString(item.url) ?? null,
       eventId:
         parsedLink && isUuid(parsedLink.eventSlugOrId)
           ? parsedLink.eventSlugOrId
           : null,
       classId: parsedLink?.classId ?? null,
       isCompleted,
-      resultImportStatus: isCompleted
+      status: isCompleted
         ? ResultImportStatus.NOT_STARTED
         : ResultImportStatus.SKIPPED_NOT_COMPLETED,
     };
@@ -387,6 +393,39 @@ export class RegattaSyncService {
     return "imported";
   }
 
+  private async upsertClub(
+    params: {
+      name?: string;
+      code?: string;
+      url?: string;
+    },
+    client: PrismaClient | Prisma.TransactionClient = this.prisma,
+  ): Promise<string | null> {
+    const id = buildClubId(params);
+    if (!id) {
+      return null;
+    }
+
+    const name = params.name ?? params.code ?? params.url ?? id;
+
+    await client.club.upsert({
+      where: { id },
+      create: {
+        id,
+        name,
+        code: params.code ?? null,
+        url: params.url ?? null,
+      },
+      update: {
+        name,
+        code: params.code ?? undefined,
+        url: params.url ?? undefined,
+      },
+    });
+
+    return id;
+  }
+
   private async saveManage2SailResults(params: {
     regattaId: string;
     eventId: string;
@@ -396,6 +435,7 @@ export class RegattaSyncService {
     await this.prisma.$transaction(
       async (tx) => {
         const syncedResultIds: string[] = [];
+        const syncedSailorIds: string[] = [];
 
         for (const entry of params.entries) {
           const name = getSailorName(entry);
@@ -405,6 +445,13 @@ export class RegattaSyncService {
 
           const clubName = optionalString(entry.ClubName);
           const clubCode = optionalString(entry.ClubCode);
+          const clubId = await this.upsertClub(
+            {
+              name: clubName,
+              code: clubCode,
+            },
+            tx,
+          );
           const identity = buildSailorIdentity({
             name,
             sailNumber: optionalString(entry.SailNumber),
@@ -412,9 +459,9 @@ export class RegattaSyncService {
           });
 
           const sailor = await tx.sailor.upsert({
-            where: { identityKey: identity.identityKey },
+            where: { id: identity.sailorId },
             create: {
-              identityKey: identity.identityKey,
+              id: identity.sailorId,
               name,
               normalizedName: identity.normalizedName,
               sailNumber: identity.sailNumber,
@@ -432,7 +479,7 @@ export class RegattaSyncService {
             },
           });
 
-          const sailorResult = await tx.regattaSailorResult.upsert({
+          const sailorResult = await tx.regattaResult.upsert({
             where: {
               regattaId_sailorId: {
                 regattaId: params.regattaId,
@@ -445,20 +492,19 @@ export class RegattaSyncService {
               rank: intOrNull(entry.Rank),
               totalPoints: numberOrNull(entry.TotalPoints),
               netPoints: numberOrNull(entry.NetPoints),
-              clubName: clubName ?? null,
-              clubCode: clubCode ?? null,
+              clubId,
             },
             update: {
               rank: intOrNull(entry.Rank),
               totalPoints: numberOrNull(entry.TotalPoints),
               netPoints: numberOrNull(entry.NetPoints),
-              clubName: clubName ?? null,
-              clubCode: clubCode ?? null,
+              clubId,
             },
           });
 
           syncedResultIds.push(sailorResult.id);
-          await this.syncRaceResults(tx, sailorResult.id, entry);
+          syncedSailorIds.push(sailor.id);
+          await this.syncRaceResults(tx, params.regattaId, sailor.id, entry);
         }
 
         if (syncedResultIds.length === 0) {
@@ -467,7 +513,14 @@ export class RegattaSyncService {
           );
         }
 
-        await tx.regattaSailorResult.deleteMany({
+        await tx.raceResult.deleteMany({
+          where: {
+            regattaId: params.regattaId,
+            sailorId: { notIn: syncedSailorIds },
+          },
+        });
+
+        await tx.regattaResult.deleteMany({
           where: {
             regattaId: params.regattaId,
             id: { notIn: syncedResultIds },
@@ -479,7 +532,7 @@ export class RegattaSyncService {
           data: {
             eventId: params.eventId,
             classId: params.classId,
-            resultImportStatus: ResultImportStatus.IMPORTED,
+            status: ResultImportStatus.IMPORTED,
           },
         });
       },
@@ -492,7 +545,8 @@ export class RegattaSyncService {
 
   private async syncRaceResults(
     tx: Prisma.TransactionClient,
-    regattaSailorResultId: string,
+    regattaId: string,
+    sailorId: string,
     entry: Manage2SailEntryResult,
   ): Promise<void> {
     const syncedRaceIndexes: number[] = [];
@@ -506,13 +560,15 @@ export class RegattaSyncService {
       syncedRaceIndexes.push(raceIndex);
       await tx.raceResult.upsert({
         where: {
-          regattaSailorResultId_raceIndex: {
-            regattaSailorResultId,
+          regattaId_sailorId_raceIndex: {
+            regattaId,
+            sailorId,
             raceIndex,
           },
         },
         create: {
-          regattaSailorResultId,
+          regattaId,
+          sailorId,
           raceIndex,
           rank: intOrNull(race.Rank),
           points: numberOrNull(race.Points),
@@ -530,7 +586,8 @@ export class RegattaSyncService {
 
     await tx.raceResult.deleteMany({
       where: {
-        regattaSailorResultId,
+        regattaId,
+        sailorId,
         raceIndex: { notIn: syncedRaceIndexes },
       },
     });
@@ -547,7 +604,7 @@ export class RegattaSyncService {
     await this.prisma.regatta.update({
       where: { id: regattaId },
       data: {
-        resultImportStatus: params.status,
+        status: params.status,
         eventId: params.eventId,
         classId: params.classId,
       },
@@ -562,6 +619,7 @@ function createEmptySummary(): SyncSummary {
     regattasUpserted: 0,
     canceledRegattasDeleted: 0,
     completedRegattas: 0,
+    notCompletedRegattas: 0,
     resultImportsAttempted: 0,
     resultImportsSucceeded: 0,
     resultImportsSkipped: 0,
@@ -572,6 +630,19 @@ function createEmptySummary(): SyncSummary {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function buildClubId(params: {
+  name?: string;
+  code?: string;
+  url?: string;
+}): string | null {
+  const normalized =
+    normalizeClubCode(params.code) ||
+    normalizeClubCode(params.name) ||
+    normalizeClubCode(params.url);
+
+  return normalized ? `club:${normalized}` : null;
 }
 
 function manage2SailResultFetchErrorMessage(params: {

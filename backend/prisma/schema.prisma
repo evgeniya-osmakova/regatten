@@ -24,106 +24,131 @@ model Regatta {
 
   year               Int
   level              String
-  regionName         String
+  regionName         String @map("region_name")
 
   name               String
-  dateFrom           DateTime
-  dateTo             DateTime
+  dateFrom           DateTime @db.Date @map("date_from")
+  dateTo             DateTime @db.Date @map("date_to")
   location           String?
 
   canceled           Int
   boats              Int
 
-  clubNameFull       String?
-  clubNameShort      String?
+  clubId             String? @map("club_id")
+  club               Club? @relation(fields: [clubId], references: [id])
 
-  runsTotal          Int?
-  runsScored         Int?
+  runsTotal          Int? @map("runs_total")
+  runsScored         Int? @map("runs_scored")
   factor             Float?
 
-  resultLink         String?
-  vereinUrl          String?
+  resultLink         String? @map("result_link")
 
-  eventId            String?
-  classId            String?
+  /// Manage2Sail event UUID resolved from the DODV result link.
+  eventId            String? @map("event_id")
+  /// Manage2Sail regatta/result UUID resolved from the DODV classId or alias.
+  classId            String? @map("class_id")
 
-  isCompleted        Boolean
-  resultImportStatus ResultImportStatus @default(NOT_STARTED)
+  isCompleted        Boolean @map("is_completed")
+  status             ResultImportStatus @default(NOT_STARTED)
 
-  sailorResults      RegattaSailorResult[]
+  results            RegattaResult[]
+  raceResults        RaceResult[]
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@index([year])
   @@index([regionName])
   @@index([isCompleted])
-  @@index([resultImportStatus])
+  @@index([status])
+  @@index([clubId])
+  @@map("regattas")
 }
 
 model Sailor {
-  id                   String @id @default(cuid())
+  id                   String @id
 
-  identityKey           String @unique
   name                  String
-  normalizedName        String
-  sailNumber            String
-  sailNumberNormalized  String
+  normalizedName        String @map("normalized_name")
+  sailNumber            String @map("sail_number")
+  sailNumberNormalized  String @map("sail_number_normalized")
 
-  clubName              String?
-  clubCode              String?
+  clubName              String? @map("club_name")
+  clubCode              String? @map("club_code")
 
-  results               RegattaSailorResult[]
+  results               RegattaResult[]
+  raceResults           RaceResult[]
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@index([normalizedName])
   @@index([sailNumberNormalized])
+  @@map("sailors")
 }
 
-model RegattaSailorResult {
+model Club {
+  id              String @id
+  name            String
+  code            String?
+  url             String?
+
+  regattas        Regatta[]
+  regattaResults  RegattaResult[]
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([code])
+  @@map("clubs")
+}
+
+model RegattaResult {
   id             String @id @default(cuid())
 
-  regattaId      String
+  regattaId      String @map("regatta_id")
   regatta        Regatta @relation(fields: [regattaId], references: [id], onDelete: Cascade)
 
-  sailorId       String
+  sailorId       String @map("sailor_id")
   sailor         Sailor @relation(fields: [sailorId], references: [id])
 
   rank           Int?
-  totalPoints    Float?
-  netPoints      Float?
+  totalPoints    Float? @map("total_points")
+  netPoints      Float? @map("net_points")
 
-  clubName       String?
-  clubCode       String?
+  clubId         String? @map("club_id")
+  club           Club? @relation(fields: [clubId], references: [id])
 
-  raceResults    RaceResult[]
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@unique([regattaId, sailorId])
   @@index([sailorId])
   @@index([rank])
-  @@index([clubCode])
+  @@index([clubId])
+  @@map("regatta_results")
 }
 
 model RaceResult {
   id                      String @id @default(cuid())
 
-  regattaSailorResultId    String
-  regattaSailorResult      RegattaSailorResult @relation(fields: [regattaSailorResultId], references: [id], onDelete: Cascade)
+  regattaId               String @map("regatta_id")
+  regatta                 Regatta @relation(fields: [regattaId], references: [id], onDelete: Cascade)
 
-  raceIndex                Int
+  sailorId                String @map("sailor_id")
+  sailor                  Sailor @relation(fields: [sailorId], references: [id])
+
+  raceIndex                Int @map("race_index")
   rank                     Int?
   points                   Float?
-  pointsDiscarded          Boolean @default(false)
-  raceStatusCode           String?
+  pointsDiscarded          Boolean @default(false) @map("points_discarded")
+  raceStatusCode           String? @map("race_status_code")
 
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
-  @@unique([regattaSailorResultId, raceIndex])
+  @@unique([regattaId, sailorId, raceIndex])
   @@index([raceStatusCode])
+  @@index([sailorId])
+  @@map("race_results")
 }

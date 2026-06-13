@@ -127,7 +127,7 @@ export function buildSailorIdentity(params: {
     : `club:${normalizedClubCode || "no-club"}`;
 
   return {
-    identityKey: `${normalizedName}|${identitySuffix}`,
+    sailorId: `${normalizedName}|${identitySuffix}`,
     normalizedName,
     sailNumber,
     sailNumberNormalized: normalizedSailNumber,
