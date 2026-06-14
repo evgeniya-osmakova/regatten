@@ -29,7 +29,6 @@ import type {
   DodvRegattaItem,
   DodvRegionConfig,
   Manage2SailEntryResult,
-  SyncError,
   SyncSummary,
 } from "./types.js";
 
