@@ -106,6 +106,19 @@ export function calculateRaceSummary(
   };
 }
 
+export function hasActuallyParticipatedInRegatta(
+  raceResults: { rank: number | null; raceStatusCode: string | null }[],
+): boolean {
+  return raceResults.some((race) => {
+    const status = race.raceStatusCode?.trim().toUpperCase() || null;
+    if (status === "DNC") {
+      return false;
+    }
+
+    return status !== null || race.rank !== null;
+  });
+}
+
 export function calculateTrend(
   chronologicalPercentiles: (number | null)[],
 ): Trend {

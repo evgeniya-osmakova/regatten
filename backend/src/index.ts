@@ -3,6 +3,7 @@ import "dotenv/config";
 import { pathToFileURL } from "node:url";
 
 export * from "./analytics/analytics-utils.js";
+export * from "./analytics/tracked-sailor-config.js";
 export * from "./analytics/tracked-sailor-service.js";
 export * from "./analytics/types.js";
 export { RegattaSyncService } from "./sync/regatta-sync-service.js";

@@ -7,6 +7,7 @@ import {
   calculateTrend,
   fleetSegmentFromPercentile,
   getFleetSegmentLabel,
+  hasActuallyParticipatedInRegatta,
 } from "./analytics-utils.js";
 import type {
   HistoricalHeadToHead,
@@ -14,8 +15,9 @@ import type {
   SailorHistoricalStrength,
   TrackedRegattaPerformance,
   TrackedSailorDashboard,
-  TrackedSailorSummary,
+  TrackedSailorsResponse,
 } from "./types.js";
+import { getTrackedSailorIdsFromEnv } from "./tracked-sailor-config.js";
 
 interface TrackedSailorAnalyticsServiceOptions {
   prisma: PrismaClient;
@@ -66,6 +68,13 @@ interface RaceResultView {
   pointsDiscarded: boolean;
 }
 
+interface RaceParticipationView {
+  regattaId: string;
+  sailorId: string;
+  rank: number | null;
+  raceStatusCode: string | null;
+}
+
 interface FieldStrength {
   fieldStrengthAveragePercentile: number | null;
   fieldStrengthKnownSailors: number;
@@ -95,9 +104,22 @@ export class TrackedSailorAnalyticsService {
     this.prisma = options.prisma;
   }
 
-  async listTrackedSailors(): Promise<TrackedSailorSummary[]> {
+  async listTrackedSailors(): Promise<TrackedSailorsResponse> {
+    const trackedSailorIds = getTrackedSailorIdsFromEnv();
+
+    if (trackedSailorIds.length === 0) {
+      return {
+        sailors: [],
+        missingSailorIds: [],
+      };
+    }
+
     const sailors = await this.prisma.sailor.findMany({
-      where: { isTracked: true },
+      where: {
+        id: {
+          in: trackedSailorIds,
+        },
+      },
       orderBy: [{ name: "asc" }, { sailNumber: "asc" }],
       select: {
         id: true,
@@ -105,49 +127,18 @@ export class TrackedSailorAnalyticsService {
         sailNumber: true,
       },
     });
+    const existingSailorIds = new Set(sailors.map((sailor) => sailor.id));
 
-    return sailors.map((sailor) => ({
-      sailorId: sailor.id,
-      sailorName: sailor.name,
-      sailNumber: sailor.sailNumber,
-    }));
-  }
-
-  async markSailorAsTracked(sailorId: string): Promise<TrackedSailorSummary> {
-    return this.setSailorTracked(sailorId, true);
-  }
-
-  async unmarkSailorAsTracked(sailorId: string): Promise<TrackedSailorSummary> {
-    return this.setSailorTracked(sailorId, false);
-  }
-
-  async setSailorTracked(
-    sailorId: string,
-    isTracked: boolean,
-  ): Promise<TrackedSailorSummary> {
-    try {
-      const sailor = await this.prisma.sailor.update({
-        where: { id: sailorId },
-        data: { isTracked },
-        select: {
-          id: true,
-          name: true,
-          sailNumber: true,
-        },
-      });
-
-      return {
+    return {
+      sailors: sailors.map((sailor) => ({
         sailorId: sailor.id,
         sailorName: sailor.name,
         sailNumber: sailor.sailNumber,
-      };
-    } catch (error) {
-      if (isPrismaNotFoundError(error)) {
-        throw new AnalyticsNotFoundError(`Sailor not found: ${sailorId}`);
-      }
-
-      throw error;
-    }
+      })),
+      missingSailorIds: trackedSailorIds.filter(
+        (id) => !existingSailorIds.has(id),
+      ),
+    };
   }
 
   async getTrackedSailorDashboard(
@@ -249,11 +240,31 @@ export class TrackedSailorAnalyticsService {
         rank: true,
       },
     });
-    const trackedRankByRegattaId = new Map(
-      trackedResults.map((result) => [result.regattaId, result.rank]),
-    );
-    const regattaIds = [...trackedRankByRegattaId.keys()];
+    const candidateRegattaIds = trackedResults.map((result) => result.regattaId);
 
+    if (candidateRegattaIds.length === 0) {
+      return [];
+    }
+
+    const trackedRaceResults = await this.prisma.raceResult.findMany({
+      where: {
+        sailorId,
+        regattaId: { in: candidateRegattaIds },
+      },
+      select: raceParticipationSelect,
+    });
+    const trackedRaceResultsByRegattaId =
+      groupRaceResultsByRegattaId(trackedRaceResults);
+    const trackedRankByRegattaId = new Map<string, number | null>();
+
+    for (const result of trackedResults) {
+      const races = trackedRaceResultsByRegattaId.get(result.regattaId) ?? [];
+      if (hasActuallyParticipatedInRegatta(races)) {
+        trackedRankByRegattaId.set(result.regattaId, result.rank);
+      }
+    }
+
+    const regattaIds = [...trackedRankByRegattaId.keys()];
     if (regattaIds.length === 0) {
       return [];
     }
@@ -265,24 +276,34 @@ export class TrackedSailorAnalyticsService {
       },
       select: participantResultSelect,
     });
+    const competitorRaceResults = await this.prisma.raceResult.findMany({
+      where: {
+        regattaId: { in: regattaIds },
+        sailorId: { not: sailorId },
+      },
+      select: raceParticipationSelect,
+    });
+    const competitorRaceResultsByKey =
+      groupRaceResultsByRegattaAndSailorId(competitorRaceResults);
     const strengths = await this.getHistoricalStrengthsBySailorId();
     const accumulators = new Map<string, HeadToHeadAccumulator>();
 
     for (const result of competitorResults) {
       const trackedRank = trackedRankByRegattaId.get(result.regattaId);
+      const competitorRaces = competitorRaceResultsByKey.get(
+        buildRegattaSailorKey(result.regattaId, result.sailorId),
+      ) ?? [];
+
+      if (!hasActuallyParticipatedInRegatta(competitorRaces)) {
+        continue;
+      }
+
       const accumulator =
         accumulators.get(result.sailorId) ??
         createHeadToHeadAccumulator(result.sailor);
 
       accumulator.commonRegattasCount += 1;
-
-      if (isValidRank(trackedRank) && isValidRank(result.rank)) {
-        if (trackedRank < result.rank) {
-          accumulator.trackedAheadCount += 1;
-        } else if (trackedRank > result.rank) {
-          accumulator.competitorAheadCount += 1;
-        }
-      }
+      updateHeadToHeadAheadCounts(accumulator, trackedRank, result.rank);
 
       accumulators.set(result.sailorId, accumulator);
     }
@@ -324,11 +345,16 @@ export class TrackedSailorAnalyticsService {
   }
 
   private async getTrackedSailorOrThrow(sailorId: string): Promise<SailorView> {
-    const sailor = await this.prisma.sailor.findFirst({
-      where: {
-        id: sailorId,
-        isTracked: true,
-      },
+    const trackedSailorIds = getTrackedSailorIdsFromEnv();
+
+    if (!trackedSailorIds.includes(sailorId)) {
+      throw new AnalyticsNotFoundError(
+        `Sailor is not configured as tracked: ${sailorId}`,
+      );
+    }
+
+    const sailor = await this.prisma.sailor.findUnique({
+      where: { id: sailorId },
       select: {
         id: true,
         name: true,
@@ -337,7 +363,9 @@ export class TrackedSailorAnalyticsService {
     });
 
     if (!sailor) {
-      throw new AnalyticsNotFoundError(`Tracked sailor not found: ${sailorId}`);
+      throw new AnalyticsNotFoundError(
+        `Configured tracked sailor not found in database: ${sailorId}`,
+      );
     }
 
     return sailor;
@@ -629,6 +657,13 @@ const historicalResultSelect = {
   },
 } as const;
 
+const raceParticipationSelect = {
+  regattaId: true,
+  sailorId: true,
+  rank: true,
+  raceStatusCode: true,
+} as const;
+
 function calculateFieldStrength(
   participants: ParticipantResultView[],
   strengths: Map<string, SailorHistoricalStrength>,
@@ -691,6 +726,81 @@ function createHeadToHeadAccumulator(
     trackedAheadCount: 0,
     competitorAheadCount: 0,
   };
+}
+
+function updateHeadToHeadAheadCounts(
+  accumulator: HeadToHeadAccumulator,
+  trackedRank: number | null | undefined,
+  competitorRank: number | null,
+): void {
+  const trackedHasRank = isValidRank(trackedRank);
+  const competitorHasRank = isValidRank(competitorRank);
+
+  if (trackedHasRank && competitorHasRank) {
+    if (trackedRank < competitorRank) {
+      accumulator.trackedAheadCount += 1;
+    } else if (trackedRank > competitorRank) {
+      accumulator.competitorAheadCount += 1;
+    }
+    return;
+  }
+
+  if (trackedHasRank && !competitorHasRank) {
+    accumulator.trackedAheadCount += 1;
+    return;
+  }
+
+  if (!trackedHasRank && competitorHasRank) {
+    accumulator.competitorAheadCount += 1;
+  }
+}
+
+function groupRaceResultsByRegattaId(
+  raceResults: RaceParticipationView[],
+): Map<string, { rank: number | null; raceStatusCode: string | null }[]> {
+  const byRegattaId = new Map<
+    string,
+    { rank: number | null; raceStatusCode: string | null }[]
+  >();
+
+  for (const raceResult of raceResults) {
+    const races = byRegattaId.get(raceResult.regattaId) ?? [];
+    races.push({
+      rank: raceResult.rank,
+      raceStatusCode: raceResult.raceStatusCode,
+    });
+    byRegattaId.set(raceResult.regattaId, races);
+  }
+
+  return byRegattaId;
+}
+
+function groupRaceResultsByRegattaAndSailorId(
+  raceResults: RaceParticipationView[],
+): Map<string, { rank: number | null; raceStatusCode: string | null }[]> {
+  const byKey = new Map<
+    string,
+    { rank: number | null; raceStatusCode: string | null }[]
+  >();
+
+  for (const raceResult of raceResults) {
+    const key = buildRegattaSailorKey(
+      raceResult.regattaId,
+      raceResult.sailorId,
+    );
+    const races = byKey.get(key) ?? [];
+    races.push({
+      rank: raceResult.rank,
+      raceStatusCode: raceResult.raceStatusCode,
+    });
+    byKey.set(key, races);
+  }
+
+  return byKey;
+}
+
+function buildRegattaSailorKey(regattaId: string, sailorId: string): string {
+  return `${regattaId}\u0000${sailorId}`;
 }
 
 function latestValidValue(values: (number | null)[]): number | null {
@@ -757,13 +867,4 @@ function hasValidParticipantRank(
   participant: ParticipantResultView,
 ): participant is ParticipantResultView & { rank: number } {
   return isValidRank(participant.rank);
-}
-
-function isPrismaNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "P2025"
-  );
 }

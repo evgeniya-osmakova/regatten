@@ -62,6 +62,11 @@ export interface TrackedSailorSummary {
   sailNumber: string;
 }
 
+export interface TrackedSailorsResponse {
+  sailors: TrackedSailorSummary[];
+  missingSailorIds: string[];
+}
+
 export interface TrackedSailorDashboard {
   sailorId: string;
   sailorName: string;

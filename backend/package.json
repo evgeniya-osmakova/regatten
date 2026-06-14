@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:sync": "tsx src/scripts/db-sync.ts",
     "db:push": "prisma db push",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",

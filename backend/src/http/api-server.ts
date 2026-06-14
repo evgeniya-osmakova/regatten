@@ -115,28 +115,6 @@ async function handleRequest(
   }
 
   if (
-    request.method === "POST" &&
-    segments.length === 4 &&
-    segments[0] === "api" &&
-    segments[1] === "sailors" &&
-    segments[3] === "track"
-  ) {
-    sendJson(response, 200, await service.markSailorAsTracked(segments[2]));
-    return;
-  }
-
-  if (
-    request.method === "DELETE" &&
-    segments.length === 4 &&
-    segments[0] === "api" &&
-    segments[1] === "sailors" &&
-    segments[3] === "track"
-  ) {
-    sendJson(response, 200, await service.unmarkSailorAsTracked(segments[2]));
-    return;
-  }
-
-  if (
     request.method === "GET" &&
     segments.length === 4 &&
     segments[0] === "api" &&
@@ -241,7 +219,7 @@ function sendError(response: ServerResponse, error: unknown): void {
 
 function setCommonHeaders(response: ServerResponse): void {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 

@@ -75,7 +75,6 @@ model Sailor {
 
   clubName              String? @map("club_name")
   clubCode              String? @map("club_code")
-  isTracked             Boolean @default(false) @map("is_tracked")
 
   results               RegattaResult[]
   raceResults           RaceResult[]
@@ -85,7 +84,6 @@ model Sailor {
 
   @@index([normalizedName])
   @@index([sailNumberNormalized])
-  @@index([isTracked])
   @@map("sailors")
 }
 
