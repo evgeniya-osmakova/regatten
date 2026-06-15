@@ -9,26 +9,7 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql://regatten:regatten@db:5432/regatten?schema=public
-    depends_on:
-      db:
-        condition: service_healthy
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: regatten
-      POSTGRES_USER: regatten
-      POSTGRES_PASSWORD: regatten
+      DATABASE_URL: ${DATABASE_URL}
+      TRACKED_SAILOR_IDS: ${TRACKED_SAILOR_IDS}
     ports:
-      - "5432:5432"
-    volumes:
-      - regatten-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U regatten -d regatten"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  regatten-postgres-data:
+      - "3000:3000"
