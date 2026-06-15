@@ -26,6 +26,7 @@ interface TrackedSailorAnalyticsServiceOptions {
 interface RegattaView {
   id: string;
   name: string;
+  resultLink: string | null;
   year: number;
   dateFrom: Date;
   dateTo: Date;
@@ -421,6 +422,7 @@ export class TrackedSailorAnalyticsService {
       return {
         regattaId: result.regatta.id,
         regattaName: result.regatta.name,
+        resultLink: result.regatta.resultLink,
         year: result.regatta.year,
         dateFrom: toDateString(result.regatta.dateFrom),
         dateTo: toDateString(result.regatta.dateTo),
@@ -659,6 +661,7 @@ const trackedResultSelect = {
     select: {
       id: true,
       name: true,
+      resultLink: true,
       year: true,
       dateFrom: true,
       dateTo: true,

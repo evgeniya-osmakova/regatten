@@ -83,6 +83,7 @@ export interface TrackedSailorDashboard {
 export interface TrackedRegattaPerformance {
   regattaId: string;
   regattaName: string;
+  resultLink: string | null;
   year: number;
   dateFrom: string;
   dateTo: string;

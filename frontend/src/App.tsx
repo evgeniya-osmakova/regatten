@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-  apiBaseUrl,
   getHistoricalHeadToHead,
   getTrackedRegattaDetail,
   getTrackedSailorDashboard,
@@ -52,14 +51,12 @@ const emptyRegattaDetailState: LoadState<TrackedRegattaPerformance> = {
   loading: false,
 };
 
-const PERCENTILE_EXPLANATION = "Formel: (1 - (Platz - 1) / (Anzahl der Boote - 1)) * 100.";
-const FLEET_SEGMENT_EXPLANATION =
-  "Nach Platzierung in Drittel eingeteilt: Spitzengruppe, Mittelfeld, Hinterfeld.";
+const PERCENTILE_EXPLANATION =
+  "100 % bedeutet Platz 1, 0 % bedeutet letzter Platz. Dazwischen zeigt der Wert, wie weit vorne der Segler im Feld war. Beispiel: Platz 5 von 20 Booten sind rund 79 %. Je höher der Wert, desto besser.";
 const HISTORICAL_SEGMENT_EXPLANATION =
   "Auf Basis des historischen Durchschnitts: > 66,7 % = Spitzengruppe, ab 33,3 % = Mittelfeld, darunter Hinterfeld.";
-const RANK_EXPLANATION = "Platzierung laut Ergebnis sowie Gesamtzahl der Boote.";
-const TOTAL_POINTS_EXPLANATION = "Wert aus dem Manage2Sail-Feld TotalPoints.";
-const NET_POINTS_EXPLANATION = "Wert aus dem Manage2Sail-Feld NetPoints nach Streichern.";
+const TOTAL_POINTS_EXPLANATION = "TotalPoints";
+const NET_POINTS_EXPLANATION = "NetPoints nach Streichern.";
 
 function App() {
   const [sailorsState, setSailorsState] = useState(emptySailorsState);
@@ -192,8 +189,7 @@ function App() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Regatten</p>
-          <h1>Analyse der beobachteten Segler</h1>
-          <p className="lead">API: {apiBaseUrl}</p>
+          <h1>Analyse</h1>
         </div>
 
         <label className="selector">
@@ -339,13 +335,16 @@ function RegattaTimelineTable({
             <th>Datum</th>
             <th>Regatta</th>
             <th>Ort</th>
-            <MetricHeader label="Platz / Boote" explanation={RANK_EXPLANATION} />
+            <th>
+              Platz / Boote
+            </th>
             <MetricHeader label="Perzentilwert" explanation={PERCENTILE_EXPLANATION} />
-            <MetricHeader label="Feldsegment" explanation={FLEET_SEGMENT_EXPLANATION} />
-            <MetricHeader
-              label="Abstand"
-              explanation="Plätze bis zum nächsthöheren Feldsegment."
-            />
+            <th>
+              Feldsegment
+            </th>
+            <th>
+              Abstand
+            </th>
             <MetricHeader label="Gesamtpunkte" explanation={TOTAL_POINTS_EXPLANATION} />
             <MetricHeader label="Nettopunkte" explanation={NET_POINTS_EXPLANATION} />
           </tr>
@@ -354,17 +353,29 @@ function RegattaTimelineTable({
           {results.map((result) => (
             <tr
               key={result.regattaId}
-              className={result.regattaId === selectedRegattaId ? "is-selected" : ""}
+              className={`selectable-row${
+                result.regattaId === selectedRegattaId ? " is-selected" : ""
+              }`}
+              onClick={() => onSelectRegatta(result.regattaId)}
             >
               <td>{formatDateRange(result.dateFrom, result.dateTo)}</td>
               <td>
-                <button
-                  className="table-link"
-                  type="button"
-                  onClick={() => onSelectRegatta(result.regattaId)}
-                >
+                <span className="regatta-cell">
                   {result.regattaName}
-                </button>
+                  {result.resultLink ? (
+                    <a
+                      aria-label={`Manage2Sail-Ergebnisse für ${result.regattaName} öffnen`}
+                      className="external-result-link"
+                      href={result.resultLink}
+                      onClick={(event) => event.stopPropagation()}
+                      rel="noreferrer"
+                      target="_blank"
+                      title="Manage2Sail-Ergebnisse öffnen"
+                    >
+                      <ExternalLinkIcon />
+                    </a>
+                  ) : null}
+                </span>
               </td>
               <td>{result.location ?? "-"}</td>
               <td>{formatRank(result.rank, result.boats)}</td>
@@ -411,7 +422,6 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
             <Metric
               label="Platz / Boote"
               value={formatRank(detail.rank, detail.boats)}
-              explanation={RANK_EXPLANATION}
             />
             <Metric
               label="Perzentilwert"
@@ -421,7 +431,6 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
             <Metric
               label="Feldsegment"
               value={detail.fleetSegmentLabel ?? "-"}
-              explanation={FLEET_SEGMENT_EXPLANATION}
             />
           </div>
 
@@ -429,22 +438,18 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
             <Metric
               label="Wettfahrten"
               value={String(detail.raceSummary.racesCount)}
-              explanation="Anzahl importierter Wettfahrten dieser Regatta."
             />
             <Metric
               label="Beste Wettfahrtplatzierung"
               value={formatNumber(detail.raceSummary.bestRank)}
-              explanation="Niedrigste gültige Platzierung in den Wettfahrten."
             />
             <Metric
               label="Schlechteste Wettfahrtplatzierung"
               value={formatNumber(detail.raceSummary.worstRank)}
-              explanation="Höchste gültige Platzierung in den Wettfahrten."
             />
             <Metric
               label="Durchschnittliche Wettfahrtplatzierung"
               value={formatNumber(detail.raceSummary.averageRank)}
-              explanation="Mittelwert aller gültigen Wettfahrtplatzierungen."
             />
             <Metric
               label="Platzspanne"
@@ -515,7 +520,7 @@ function NearbyCompetitorsTable({
               explanation="Anzahl historischer Regatten mit gültigem Perzentilwert."
             />
             <MetricHeader
-              label="Historischer Ø-Perzentilwert"
+              label="Historischer durchschnittlicher Perzentilwert"
               explanation="Mittelwert der historischen Perzentilwerte des Konkurrenten."
             />
             <MetricHeader
@@ -575,7 +580,7 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
               explanation={HISTORICAL_SEGMENT_EXPLANATION}
             />
             <MetricHeader
-              label="Ø-Perzentilwert des Konkurrenten"
+              label="Durchschnittlicher Perzentilwert des Konkurrenten"
               explanation="Mittelwert der historischen Perzentilwerte des Konkurrenten."
             />
           </tr>
@@ -600,14 +605,25 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
   );
 }
 
-function MetricHeader({ label, explanation }: { label: string; explanation: string }) {
+function MetricHeader({ label, explanation }: { label: string; explanation?: string }) {
   return (
     <th>
       <span className="table-heading">
         <span>{label}</span>
-        <small>Berechnung: {explanation}</small>
+        {explanation && <small>Berechnung: {explanation}</small>}
       </span>
     </th>
+  );
+}
+
+function ExternalLinkIcon() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 20 20">
+      <path
+        d="M7 4h9v9h-2V7.4l-8.3 8.3-1.4-1.4L12.6 6H7V4Z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 
