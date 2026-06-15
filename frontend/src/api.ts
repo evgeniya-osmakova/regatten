@@ -64,8 +64,40 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 async function readErrorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ApiErrorBody;
-    return body.error?.message ?? `Request failed with status ${response.status}`;
+    return body.error?.message
+      ? localizeApiErrorMessage(body.error.message)
+      : `Anfrage fehlgeschlagen (Status ${response.status}).`;
   } catch {
-    return `Request failed with status ${response.status}`;
+    return `Anfrage fehlgeschlagen (Status ${response.status}).`;
   }
+}
+
+function localizeApiErrorMessage(message: string): string {
+  if (message === "Not found") {
+    return "Nicht gefunden.";
+  }
+
+  if (message === "Internal server error") {
+    return "Interner Serverfehler.";
+  }
+
+  if (message.startsWith("Sailor is not configured as tracked: ")) {
+    return `Der Segler ist nicht als beobachteter Segler konfiguriert: ${message.replace(
+      "Sailor is not configured as tracked: ",
+      "",
+    )}`;
+  }
+
+  if (message.startsWith("Configured tracked sailor not found in database: ")) {
+    return `Der konfigurierte beobachtete Segler wurde in der Datenbank nicht gefunden: ${message.replace(
+      "Configured tracked sailor not found in database: ",
+      "",
+    )}`;
+  }
+
+  if (message.startsWith("Regatta result not found for sailor ")) {
+    return "Das Regatta-Ergebnis für diesen Segler wurde nicht gefunden.";
+  }
+
+  return `Serverfehler: ${message}`;
 }

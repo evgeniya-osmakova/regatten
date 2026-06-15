@@ -46,6 +46,7 @@ export interface HistoricalHeadToHead {
   competitorSailorId: string;
   competitorName: string;
   competitorSailNumber: string | null;
+  competitorParticipatedRegattasCount: number;
   commonRegattasCount: number;
   trackedAheadCount: number;
   competitorAheadCount: number;

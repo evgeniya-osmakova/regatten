@@ -52,6 +52,15 @@ const emptyRegattaDetailState: LoadState<TrackedRegattaPerformance> = {
   loading: false,
 };
 
+const PERCENTILE_EXPLANATION = "Formel: (1 - (Platz - 1) / (Anzahl der Boote - 1)) * 100.";
+const FLEET_SEGMENT_EXPLANATION =
+  "Nach Platzierung in Drittel eingeteilt: Spitzengruppe, Mittelfeld, Hinterfeld.";
+const HISTORICAL_SEGMENT_EXPLANATION =
+  "Auf Basis des historischen Durchschnitts: > 66,7 % = Spitzengruppe, ab 33,3 % = Mittelfeld, darunter Hinterfeld.";
+const RANK_EXPLANATION = "Platzierung laut Ergebnis sowie Gesamtzahl der Boote.";
+const TOTAL_POINTS_EXPLANATION = "Wert aus dem Manage2Sail-Feld TotalPoints.";
+const NET_POINTS_EXPLANATION = "Wert aus dem Manage2Sail-Feld NetPoints nach Streichern.";
+
 function App() {
   const [sailorsState, setSailorsState] = useState(emptySailorsState);
   const [selectedSailorId, setSelectedSailorId] = useState("");
@@ -183,12 +192,12 @@ function App() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Regatten</p>
-          <h1>Tracked Sailor Analytics</h1>
-          <p className="lead">Backend: {apiBaseUrl}</p>
+          <h1>Analyse der beobachteten Segler</h1>
+          <p className="lead">API: {apiBaseUrl}</p>
         </div>
 
         <label className="selector">
-          <span>Tracked sailor</span>
+          <span>Beobachteter Segler</span>
           <select
             disabled={sailorsState.loading || sailors.length === 0}
             value={selectedSailorId}
@@ -203,14 +212,14 @@ function App() {
         </label>
       </header>
 
-      {sailorsState.loading ? <StatusMessage message="Lade Segler..." /> : null}
+      {sailorsState.loading ? <StatusMessage message="Segler werden geladen ..." /> : null}
       {sailorsState.error ? <ErrorMessage message={sailorsState.error} /> : null}
       {!sailorsState.loading && !sailorsState.error && sailors.length === 0 ? (
-        <EmptyState message="Keine tracked sailors konfiguriert." />
+        <EmptyState message="Es sind keine beobachteten Segler konfiguriert." />
       ) : null}
 
       {selectedSailor ? (
-        <section className="selected-sailor" aria-label="Ausgewaehlter Segler">
+        <section className="selected-sailor" aria-label="Ausgewählter Segler">
           <strong>{selectedSailor.sailorName}</strong>
           <span>{selectedSailor.sailNumber}</span>
         </section>
@@ -220,15 +229,15 @@ function App() {
 
       <section className="panel timeline-panel">
         <SectionHeader
-          eyebrow="Timeline"
-          title="Regatta results"
-          description="Klicke eine Regatta fuer Details und nahe Konkurrenten."
+          eyebrow="Zeitverlauf"
+          title="Regatta-Ergebnisse"
+          description="Regatta auswählen, um Details und nahe Konkurrenten anzuzeigen."
         />
 
-        {dashboardState.loading ? <StatusMessage message="Lade Dashboard..." /> : null}
+        {dashboardState.loading ? <StatusMessage message="Übersicht wird geladen ..." /> : null}
         {dashboardState.error ? <ErrorMessage message={dashboardState.error} /> : null}
         {dashboard && dashboard.results.length === 0 ? (
-          <EmptyState message="Keine Dashboard-Ergebnisse gefunden." />
+          <EmptyState message="Für die Übersicht wurden keine Ergebnisse gefunden." />
         ) : null}
         {dashboard && dashboard.results.length > 0 ? (
           <RegattaTimelineTable
@@ -243,15 +252,17 @@ function App() {
 
       <section className="panel">
         <SectionHeader
-          eyebrow="Head-to-head"
-          title="Historische Duelle"
-          description="Sortiert nach gemeinsamen Regatten, Staerke und Name."
+          eyebrow="Direkter Vergleich"
+          title="Historische Direktvergleiche"
+          description="Sortiert nach Anzahl gemeinsamer Regatten, Stärke und Namen."
         />
 
-        {headToHeadState.loading ? <StatusMessage message="Lade Head-to-head..." /> : null}
+        {headToHeadState.loading ? (
+          <StatusMessage message="Direktvergleiche werden geladen ..." />
+        ) : null}
         {headToHeadState.error ? <ErrorMessage message={headToHeadState.error} /> : null}
         {headToHeadState.data && headToHeadRows.length === 0 ? (
-          <EmptyState message="Keine Head-to-head-Daten gefunden." />
+          <EmptyState message="Für direkte Vergleiche wurden keine Daten gefunden." />
         ) : null}
         {headToHeadRows.length > 0 ? <HeadToHeadTable rows={headToHeadRows} /> : null}
       </section>
@@ -263,30 +274,50 @@ function DashboardSummary({ state }: { state: LoadState<TrackedSailorDashboard> 
   const dashboard = state.data;
 
   return (
-    <section className="summary-grid" aria-label="Dashboard summary">
+    <section className="summary-grid" aria-label="Übersicht der Kennzahlen">
       <SummaryCard
-        label="Total regattas"
+        label="Anzahl der Regatten"
         value={dashboard ? String(dashboard.totalRegattas) : "-"}
+        explanation="Anzahl der Regatten mit Ergebnis für diesen Segler."
       />
       <SummaryCard
-        label="Average percentile"
+        label="Durchschnittlicher Perzentilwert"
         value={formatPercentile(dashboard?.averagePercentile)}
+        explanation="Mittelwert aller gültigen Regatta-Perzentilwerte."
       />
-      <SummaryCard label="Best percentile" value={formatPercentile(dashboard?.bestPercentile)} />
       <SummaryCard
-        label="Latest percentile"
-        value={formatPercentile(dashboard?.latestPercentile)}
+        label="Bester Perzentilwert"
+        value={formatPercentile(dashboard?.bestPercentile)}
+        explanation="Höchster gültiger Regatta-Perzentilwert."
       />
-      <SummaryCard label="Trend" value={dashboard ? formatTrend(dashboard.trend) : "-"} />
+      <SummaryCard
+        label="Letzter Perzentilwert"
+        value={formatPercentile(dashboard?.latestPercentile)}
+        explanation="Zuletzt erfasster gültiger Perzentilwert im chronologischen Verlauf."
+      />
+      <SummaryCard
+        label="Trend"
+        value={dashboard ? formatTrend(dashboard.trend) : "-"}
+        explanation="Vergleicht den Durchschnitt der ersten mit dem der letzten Hälfte; Änderung ab 5 Prozentpunkten."
+      />
     </section>
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({
+  label,
+  value,
+  explanation,
+}: {
+  label: string;
+  value: string;
+  explanation: string;
+}) {
   return (
     <article className="summary-card">
       <span>{label}</span>
       <strong>{value}</strong>
+      <small className="calculation-note">Berechnung: {explanation}</small>
     </article>
   );
 }
@@ -305,15 +336,18 @@ function RegattaTimelineTable({
       <table>
         <thead>
           <tr>
-            <th>Date</th>
+            <th>Datum</th>
             <th>Regatta</th>
-            <th>Location</th>
-            <th>Rank / boats</th>
-            <th>Percentile</th>
-            <th>Fleet segment</th>
-            <th>Distance</th>
-            <th>Total points</th>
-            <th>Net points</th>
+            <th>Ort</th>
+            <MetricHeader label="Platz / Boote" explanation={RANK_EXPLANATION} />
+            <MetricHeader label="Perzentilwert" explanation={PERCENTILE_EXPLANATION} />
+            <MetricHeader label="Feldsegment" explanation={FLEET_SEGMENT_EXPLANATION} />
+            <MetricHeader
+              label="Abstand"
+              explanation="Plätze bis zum nächsthöheren Feldsegment."
+            />
+            <MetricHeader label="Gesamtpunkte" explanation={TOTAL_POINTS_EXPLANATION} />
+            <MetricHeader label="Nettopunkte" explanation={NET_POINTS_EXPLANATION} />
           </tr>
         </thead>
         <tbody>
@@ -358,46 +392,76 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
   return (
     <section className="panel detail-panel">
       <SectionHeader
-        eyebrow="Selected regatta"
-        title="Regatta detail"
-        description="Race consistency and nearby competitor strength."
+        eyebrow="Ausgewählte Regatta"
+        title="Regatta-Details"
+        description="Konstanz der Wettfahrten und Stärke naher Konkurrenten."
       />
 
       {!state.loading && !state.error && !detail ? (
-        <EmptyState message="Waehle eine Regatta aus der Timeline." />
+        <EmptyState message="Regatta im Zeitverlauf auswählen." />
       ) : null}
-      {state.loading ? <StatusMessage message="Lade Regatta-Details..." /> : null}
+      {state.loading ? <StatusMessage message="Regatta-Details werden geladen ..." /> : null}
       {state.error ? <ErrorMessage message={state.error} /> : null}
 
       {detail ? (
         <>
           <div className="detail-grid">
             <Metric label="Regatta" value={detail.regattaName} />
-            <Metric label="Date" value={formatDateRange(detail.dateFrom, detail.dateTo)} />
-            <Metric label="Rank / boats" value={formatRank(detail.rank, detail.boats)} />
-            <Metric label="Percentile" value={formatPercentile(detail.percentile)} />
-            <Metric label="Fleet segment" value={detail.fleetSegmentLabel ?? "-"} />
+            <Metric label="Datum" value={formatDateRange(detail.dateFrom, detail.dateTo)} />
+            <Metric
+              label="Platz / Boote"
+              value={formatRank(detail.rank, detail.boats)}
+              explanation={RANK_EXPLANATION}
+            />
+            <Metric
+              label="Perzentilwert"
+              value={formatPercentile(detail.percentile)}
+              explanation={PERCENTILE_EXPLANATION}
+            />
+            <Metric
+              label="Feldsegment"
+              value={detail.fleetSegmentLabel ?? "-"}
+              explanation={FLEET_SEGMENT_EXPLANATION}
+            />
           </div>
 
           <div className="detail-grid consistency-grid">
-            <Metric label="Races count" value={String(detail.raceSummary.racesCount)} />
-            <Metric label="Best race rank" value={formatNumber(detail.raceSummary.bestRank)} />
-            <Metric label="Worst race rank" value={formatNumber(detail.raceSummary.worstRank)} />
             <Metric
-              label="Average race rank"
-              value={formatNumber(detail.raceSummary.averageRank)}
+              label="Wettfahrten"
+              value={String(detail.raceSummary.racesCount)}
+              explanation="Anzahl importierter Wettfahrten dieser Regatta."
             />
-            <Metric label="Rank spread" value={formatNumber(detail.raceSummary.rankSpread)} />
             <Metric
-              label="Discarded races"
+              label="Beste Wettfahrtplatzierung"
+              value={formatNumber(detail.raceSummary.bestRank)}
+              explanation="Niedrigste gültige Platzierung in den Wettfahrten."
+            />
+            <Metric
+              label="Schlechteste Wettfahrtplatzierung"
+              value={formatNumber(detail.raceSummary.worstRank)}
+              explanation="Höchste gültige Platzierung in den Wettfahrten."
+            />
+            <Metric
+              label="Durchschnittliche Wettfahrtplatzierung"
+              value={formatNumber(detail.raceSummary.averageRank)}
+              explanation="Mittelwert aller gültigen Wettfahrtplatzierungen."
+            />
+            <Metric
+              label="Platzspanne"
+              value={formatNumber(detail.raceSummary.rankSpread)}
+              explanation="Schlechteste Wettfahrtplatzierung minus beste Wettfahrtplatzierung."
+            />
+            <Metric
+              label="Streicher"
               value={String(detail.raceSummary.discardedRacesCount)}
+              explanation="Anzahl der als gestrichen markierten Wettfahrten."
             />
           </div>
 
           <section className="nested-section">
-            <h3>Nearby competitors</h3>
+            <h3>Nahe Konkurrenten</h3>
             {detail.nearbyCompetitors.length === 0 ? (
-              <EmptyState message="Keine nahen Konkurrenten gefunden." />
+              <EmptyState message="Es wurden keine nahen Konkurrenten gefunden." />
             ) : (
               <NearbyCompetitorsTable rows={detail.nearbyCompetitors} />
             )}
@@ -408,11 +472,20 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  explanation,
+}: {
+  label: string;
+  value: string;
+  explanation?: string;
+}) {
   return (
     <div className="metric">
       <span>{label}</span>
       <strong>{value}</strong>
+      {explanation ? <small className="calculation-note">Berechnung: {explanation}</small> : null}
     </div>
   );
 }
@@ -427,13 +500,28 @@ function NearbyCompetitorsTable({
       <table>
         <thead>
           <tr>
-            <th>Rank</th>
+            <MetricHeader
+              label="Platz"
+              explanation="Platzierung des Konkurrenten in dieser Regatta."
+            />
             <th>Name</th>
-            <th>Sail number</th>
-            <th>Rank diff</th>
-            <th>Historical regattas</th>
-            <th>Historical avg percentile</th>
-            <th>Historical segment</th>
+            <th>Segelnummer</th>
+            <MetricHeader
+              label="Platzdifferenz"
+              explanation="Platzierung des Konkurrenten minus Platzierung des beobachteten Seglers."
+            />
+            <MetricHeader
+              label="Historische Regatten"
+              explanation="Anzahl historischer Regatten mit gültigem Perzentilwert."
+            />
+            <MetricHeader
+              label="Historischer Ø-Perzentilwert"
+              explanation="Mittelwert der historischen Perzentilwerte des Konkurrenten."
+            />
+            <MetricHeader
+              label="Historisches Segment"
+              explanation={HISTORICAL_SEGMENT_EXPLANATION}
+            />
           </tr>
         </thead>
         <tbody>
@@ -460,14 +548,36 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
       <table>
         <thead>
           <tr>
-            <th>Competitor</th>
-            <th>Sail number</th>
-            <th>Common regattas</th>
-            <th>Tracked ahead</th>
-            <th>Competitor ahead</th>
-            <th>Tracked win rate</th>
-            <th>Competitor segment</th>
-            <th>Competitor avg percentile</th>
+            <th>Konkurrent</th>
+            <th>Segelnummer</th>
+            <MetricHeader
+              label="Teilgenommene Regatten"
+              explanation="Regatten, an denen der Konkurrent tatsächlich teilgenommen hat; abgesagte Regatten und DNC werden nicht gezählt."
+            />
+            <MetricHeader
+              label="Gemeinsame Regatten"
+              explanation="Regatten, an denen beide tatsächlich teilgenommen haben."
+            />
+            <MetricHeader
+              label="Beobachteter Segler vorn"
+              explanation="Zähler, wenn der beobachtete Segler vor dem Konkurrenten lag oder nur er eine gültige Platzierung hatte."
+            />
+            <MetricHeader
+              label="Konkurrent vorn"
+              explanation="Zähler, wenn der Konkurrent vor dem beobachteten Segler lag oder nur er eine gültige Platzierung hatte."
+            />
+            <MetricHeader
+              label="Siegquote des beobachteten Seglers"
+              explanation="Beobachteter Segler vorn / (beobachteter Segler vorn + Konkurrent vorn)."
+            />
+            <MetricHeader
+              label="Segment des Konkurrenten"
+              explanation={HISTORICAL_SEGMENT_EXPLANATION}
+            />
+            <MetricHeader
+              label="Ø-Perzentilwert des Konkurrenten"
+              explanation="Mittelwert der historischen Perzentilwerte des Konkurrenten."
+            />
           </tr>
         </thead>
         <tbody>
@@ -475,6 +585,7 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
             <tr key={row.competitorSailorId}>
               <td>{row.competitorName}</td>
               <td>{row.competitorSailNumber ?? "-"}</td>
+              <td>{row.competitorParticipatedRegattasCount}</td>
               <td>{row.commonRegattasCount}</td>
               <td>{row.trackedAheadCount}</td>
               <td>{row.competitorAheadCount}</td>
@@ -486,6 +597,17 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function MetricHeader({ label, explanation }: { label: string; explanation: string }) {
+  return (
+    <th>
+      <span className="table-heading">
+        <span>{label}</span>
+        <small>Berechnung: {explanation}</small>
+      </span>
+    </th>
   );
 }
 

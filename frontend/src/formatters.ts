@@ -16,10 +16,16 @@ const dateFormatter = new Intl.DateTimeFormat("de-DE", {
 });
 
 const trendLabels: Record<Trend, string> = {
-  IMPROVING: "Verbessert sich",
+  IMPROVING: "Verbesserung",
   STABLE: "Stabil",
-  DECLINING: "Verschlechtert sich",
+  DECLINING: "Verschlechterung",
   NOT_ENOUGH_DATA: "Zu wenig Daten",
+};
+
+const segmentTargets: Record<string, string> = {
+  Hinterfeld: "zum Hinterfeld",
+  Mittelfeld: "zum Mittelfeld",
+  Spitzengruppe: "zur Spitzengruppe",
 };
 
 export function formatPercentile(value: number | null | undefined): string {
@@ -35,14 +41,14 @@ export function formatRank(
   boats: number | null | undefined,
 ): string {
   if (rank === null || rank === undefined) {
-    return boats === null || boats === undefined ? "-" : `${boats} Boote`;
+    return boats === null || boats === undefined ? "-" : formatBoatCount(boats);
   }
 
   if (boats === null || boats === undefined) {
     return `Platz ${rank}`;
   }
 
-  return `Platz ${rank} / ${boats} Boote`;
+  return `Platz ${rank} / ${formatBoatCount(boats)}`;
 }
 
 export function formatDistanceToNextSegment(
@@ -53,8 +59,8 @@ export function formatDistanceToNextSegment(
     return "-";
   }
 
-  const placeLabel = positions === 1 ? "Platz" : "Positionen";
-  return `${positions} ${placeLabel} bis ${label}`;
+  const placeLabel = positions === 1 ? "Platz" : "Plätze";
+  return `${positions} ${placeLabel} bis ${segmentTargets[label] ?? `zum Segment ${label}`}`;
 }
 
 export function formatTrend(trend: Trend): string {
@@ -84,4 +90,8 @@ function formatDate(value: string): string {
   }
 
   return dateFormatter.format(date);
+}
+
+function formatBoatCount(boats: number): string {
+  return `${boats} ${boats === 1 ? "Boot" : "Boote"}`;
 }

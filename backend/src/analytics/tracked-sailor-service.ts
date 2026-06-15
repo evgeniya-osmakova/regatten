@@ -308,6 +308,11 @@ export class TrackedSailorAnalyticsService {
       accumulators.set(result.sailorId, accumulator);
     }
 
+    const participatedRegattasCountBySailorId =
+      await this.getParticipatedRegattasCountBySailorId([
+        ...accumulators.keys(),
+      ]);
+
     return [...accumulators.entries()]
       .map(([competitorSailorId, accumulator]) => {
         const comparableCount =
@@ -320,6 +325,8 @@ export class TrackedSailorAnalyticsService {
           competitorSailNumber: nullableSailNumber(
             accumulator.competitor.sailNumber,
           ),
+          competitorParticipatedRegattasCount:
+            participatedRegattasCountBySailorId.get(competitorSailorId) ?? 0,
           commonRegattasCount: accumulator.commonRegattasCount,
           trackedAheadCount: accumulator.trackedAheadCount,
           competitorAheadCount: accumulator.competitorAheadCount,
@@ -603,6 +610,43 @@ export class TrackedSailorAnalyticsService {
       ]),
     );
   }
+
+  private async getParticipatedRegattasCountBySailorId(
+    sailorIds: string[],
+  ): Promise<Map<string, number>> {
+    if (sailorIds.length === 0) {
+      return new Map();
+    }
+
+    const raceResults = await this.prisma.raceResult.findMany({
+      where: {
+        sailorId: { in: sailorIds },
+        regatta: {
+          canceled: 0,
+        },
+      },
+      select: raceParticipationSelect,
+    });
+    const raceResultsByKey =
+      groupFullRaceResultsByRegattaAndSailorId(raceResults);
+    const countsBySailorId = new Map<string, number>(
+      sailorIds.map((sailorId) => [sailorId, 0]),
+    );
+
+    for (const races of raceResultsByKey.values()) {
+      const firstRace = races[0];
+      if (!firstRace || !hasActuallyParticipatedInRegatta(races)) {
+        continue;
+      }
+
+      countsBySailorId.set(
+        firstRace.sailorId,
+        (countsBySailorId.get(firstRace.sailorId) ?? 0) + 1,
+      );
+    }
+
+    return countsBySailorId;
+  }
 }
 
 const trackedResultSelect = {
@@ -793,6 +837,24 @@ function groupRaceResultsByRegattaAndSailorId(
       rank: raceResult.rank,
       raceStatusCode: raceResult.raceStatusCode,
     });
+    byKey.set(key, races);
+  }
+
+  return byKey;
+}
+
+function groupFullRaceResultsByRegattaAndSailorId(
+  raceResults: RaceParticipationView[],
+): Map<string, RaceParticipationView[]> {
+  const byKey = new Map<string, RaceParticipationView[]>();
+
+  for (const raceResult of raceResults) {
+    const key = buildRegattaSailorKey(
+      raceResult.regattaId,
+      raceResult.sailorId,
+    );
+    const races = byKey.get(key) ?? [];
+    races.push(raceResult);
     byKey.set(key, races);
   }
 
