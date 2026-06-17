@@ -185,17 +185,18 @@ function App() {
   }, [headToHeadState.data]);
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" id="content" tabIndex={-1}>
       <header className="page-header">
         <div>
           <p className="eyebrow">Regatten</p>
           <h1>Analyse</h1>
         </div>
 
-        <label className="selector">
+        <label className="selector" htmlFor="sailor-selector">
           <span>Beobachteter Segler</span>
           <select
             disabled={sailorsState.loading || sailors.length === 0}
+            id="sailor-selector"
             value={selectedSailorId}
             onChange={(event) => selectSailor(event.target.value)}
           >
@@ -246,7 +247,7 @@ function App() {
 
       <RegattaDetail state={regattaDetailState} />
 
-      <section className="panel">
+      <section className="panel deferred-panel">
         <SectionHeader
           eyebrow="Direkter Vergleich"
           title="Historische Direktvergleiche"
@@ -330,19 +331,22 @@ function RegattaTimelineTable({
   return (
     <div className="table-wrap">
       <table>
+        <caption className="visually-hidden">
+          Regatta-Ergebnisse des ausgewählten Seglers im Zeitverlauf
+        </caption>
         <thead>
           <tr>
-            <th>Datum</th>
-            <th>Regatta</th>
-            <th>Ort</th>
-            <th>
+            <th scope="col">Datum</th>
+            <th scope="col">Regatta</th>
+            <th scope="col">Ort</th>
+            <th scope="col">
               Platz / Boote
             </th>
             <MetricHeader label="Perzentilwert" explanation={PERCENTILE_EXPLANATION} />
-            <th>
+            <th scope="col">
               Feldsegment
             </th>
-            <th>
+            <th scope="col">
               Abstand
             </th>
             <MetricHeader label="Gesamtpunkte" explanation={TOTAL_POINTS_EXPLANATION} />
@@ -401,7 +405,7 @@ function RegattaDetail({ state }: { state: LoadState<TrackedRegattaPerformance> 
   const detail = state.data;
 
   return (
-    <section className="panel detail-panel">
+    <section className="panel detail-panel deferred-panel">
       <SectionHeader
         eyebrow="Ausgewählte Regatta"
         title="Regatta-Details"
@@ -503,14 +507,17 @@ function NearbyCompetitorsTable({
   return (
     <div className="table-wrap">
       <table>
+        <caption className="visually-hidden">
+          Nahe Konkurrenten der ausgewählten Regatta
+        </caption>
         <thead>
           <tr>
             <MetricHeader
               label="Platz"
               explanation="Platzierung des Konkurrenten in dieser Regatta."
             />
-            <th>Name</th>
-            <th>Segelnummer</th>
+            <th scope="col">Name</th>
+            <th scope="col">Segelnummer</th>
             <MetricHeader
               label="Platzdifferenz"
               explanation="Platzierung des Konkurrenten minus Platzierung des beobachteten Seglers."
@@ -551,10 +558,13 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
   return (
     <div className="table-wrap">
       <table>
+        <caption className="visually-hidden">
+          Historische Direktvergleiche des ausgewählten Seglers
+        </caption>
         <thead>
           <tr>
-            <th>Konkurrent</th>
-            <th>Segelnummer</th>
+            <th scope="col">Konkurrent</th>
+            <th scope="col">Segelnummer</th>
             <MetricHeader
               label="Teilgenommene Regatten"
               explanation="Regatten, an denen der Konkurrent tatsächlich teilgenommen hat; abgesagte Regatten und DNC werden nicht gezählt."
@@ -607,7 +617,7 @@ function HeadToHeadTable({ rows }: { rows: HistoricalHeadToHead[] }) {
 
 function MetricHeader({ label, explanation }: { label: string; explanation?: string }) {
   return (
-    <th>
+    <th scope="col">
       <span className="table-heading">
         <span>{label}</span>
         {explanation && <small>Berechnung: {explanation}</small>}
@@ -646,11 +656,19 @@ function SectionHeader({
 }
 
 function StatusMessage({ message }: { message: string }) {
-  return <p className="status-message">{message}</p>;
+  return (
+    <p className="status-message" role="status">
+      {message}
+    </p>
+  );
 }
 
 function ErrorMessage({ message }: { message: string }) {
-  return <p className="status-message error-message">{message}</p>;
+  return (
+    <p className="status-message error-message" role="alert">
+      {message}
+    </p>
+  );
 }
 
 function EmptyState({ message }: { message: string }) {
